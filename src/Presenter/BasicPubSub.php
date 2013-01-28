@@ -9,20 +9,35 @@ use Ratchet\Wamp\WampServerInterface;
 * to that topic will receive the message/event from the publisher
 */
 class BasicPubSub implements WampServerInterface {
+
 	public function onPublish(Conn $conn, $topic, $event, array $exclude, array $eligible) {
 		$topic->broadcast($event);
 	}
 
 	public function onCall(Conn $conn, $id, $topic, array $params) {
-		$conn->callError($id, $topic, 'RPC not supported on this demo');
+		$conn->callError($id, $topic, 'RPC not supported!');
 	}
 
-	// No need to anything, since WampServer adds and removes subscribers to Topics automatically
-	public function onSubscribe(Conn $conn, $topic) {}
-	public function onUnSubscribe(Conn $conn, $topic) {}
+	public function onSubscribe(Conn $conn, $topic) {
+		echo "New Subscription on topic ".$topic.": {$conn->resourceId}\n";
+	}
 
-	public function onOpen(Conn $conn) {}
-	public function onClose(Conn $conn) {}
-	public function onError(Conn $conn, \Exception $e) {}
+	public function onUnSubscribe(Conn $conn, $topic) {
+	}
+
+	public function onOpen(Conn $conn) {
+		echo "New connection: {$conn->resourceId}\n";
+	}
+
+	public function onClose(Conn $conn) {
+		echo "Connection closed: {$conn->resourceId}\n";
+	}
+
+	public function onError(Conn $conn, \Exception $e) {
+		echo "An error has occurred: {$e->getMessage()}\n";
+
+		$conn->close();
+	}
+
 }
 ?>
