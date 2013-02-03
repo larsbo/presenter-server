@@ -1,0 +1,2 @@
+#!/bin/bash
+php bin/run-wamp-server.php

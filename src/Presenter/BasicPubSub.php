@@ -25,21 +25,32 @@ class BasicPubSub implements WampServerInterface {
 		switch ($topic) {
 
 		case 'add':
-			// new element added
-			$this->elements[$event['id']] = array(
+			// create hash value of element name to allocate each element
+			$key = md5($event['name']);
+
+			$this->elements[$key] = array(
 				'session' => $event['session'],
 				'name' => $event['name'],
 				'path' => $event['path']
 			);
+
+			var_dump($this->elements);
 			break;
 
 		case 'remove':
-			// element removed
-			unset($this->elements[$event['id']]);
-			break;
-		}
+			// create hash value of element name to allocate each element
+			$key = md5($event['name']);
 
-		var_dump($this->elements);
+			if (isset($this->elements[$key])) {
+				unset($this->elements[$key]);
+			} else {
+				echo "element {$key} not found!\n";
+			}
+
+			var_dump($this->elements);
+			break;
+
+		}
 	}
 
 
@@ -49,7 +60,6 @@ class BasicPubSub implements WampServerInterface {
 
 
 	public function onSubscribe(Conn $conn, $topic) {
-		//echo "New Subscription on topic ".$topic.": {$conn->resourceId}\n";
 	}
 
 
@@ -60,7 +70,7 @@ class BasicPubSub implements WampServerInterface {
 	public function onOpen(Conn $conn) {
 		// add new client to list of connections
 		$this->connections->attach($conn);
-		$connectionNumber = sizeof($this->connections);
+		$connections = sizeof($this->connections);
 
 		// get all connected clients
 		$clients = array();
@@ -78,7 +88,7 @@ class BasicPubSub implements WampServerInterface {
 			$connection->event('synchronize', array('elements', $this->elements));
 		}
 
-		echo "New connection: {$conn->resourceId} (connections: {$connectionNumber})\n";
+		echo "New connection: {$conn->resourceId} (connections: {$connections})\n";
 	}
 
 
@@ -87,14 +97,19 @@ class BasicPubSub implements WampServerInterface {
 
 		// remove client from list of connections
 		$this->connections->detach($conn);
-		$connectionNumber = sizeof($this->connections);
+		$connections = sizeof($this->connections);
+
+		// clear elements array if no clients connected anymore
+		if (!$connections) {
+			$this->elements = array();
+		}
 
 		// publish disconnection of client to still connected clients
 		foreach ($this->connections as $connection) {
 			$connection->event('disconnect', array('client', $client));
 		}
 
-		echo "Connection closed: {$conn->resourceId} (connections: {$connectionNumber})\n";
+		echo "Connection closed: {$conn->resourceId} (connections: {$connections})\n";
 	}
 
 
