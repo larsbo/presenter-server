@@ -18,36 +18,62 @@ class BasicPubSub implements WampServerInterface {
 		$this->elements = array();
 	}
 
+	private function _print_elements() {
+		if (!empty($this->elements)) {
+			echo "elements:\n";
+			foreach ($this->elements as $id => $element) {
+				echo " - " . $id . ": " . $element['name'] . "\n";
+			}
+			echo "\n";
+		}
+	}
 
 	public function onPublish(Conn $conn, $topic, $event, array $exclude, array $eligible) {
 		$topic->broadcast($event);
 
 		switch ($topic) {
 
+		// add new element
 		case 'add':
-			// create hash value of element name to allocate each element
+			// create hash value of element name for unique id
 			$key = md5($event['name']);
 
-			$this->elements[$key] = array(
-				'session' => $event['session'],
-				'name' => $event['name'],
-				'path' => $event['path']
-			);
-
-			var_dump($this->elements);
+			if (!array_key_exists($key, $this->elements)) {
+				$this->elements[$key] = array(
+					'session' => $event['session'],
+					'name' => $event['name'],
+					'type' => $event['type'],
+					'left' => $event['left'],
+					'top' => $event['top']
+				);
+				$this->_print_elements();
+			}
 			break;
 
+		// remove element
 		case 'remove':
-			// create hash value of element name to allocate each element
+			// create hash value of element name for unique id
 			$key = md5($event['name']);
 
 			if (isset($this->elements[$key])) {
 				unset($this->elements[$key]);
 			} else {
-				echo "element {$key} not found!\n";
+				echo "can't remove element {$key}: not found!\n";
 			}
+			$this->_print_elements();
+			break;
 
-			var_dump($this->elements);
+		// reposition element
+		case 'drag-end':
+			// create hash value of element name for unique id
+			$key = md5($event['name']);
+
+			if (isset($this->elements[$key])) {
+				$this->elements[$key]['left'] = $event['left'];
+				$this->elements[$key]['top'] = $event['top'];
+			} else {
+				echo "can't reposition element {$key}: not found!\n";
+			}
 			break;
 
 		}
