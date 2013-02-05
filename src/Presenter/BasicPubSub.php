@@ -11,21 +11,13 @@ use Ratchet\Wamp\WampServerInterface;
 class BasicPubSub implements WampServerInterface {
 	protected $connections;
 	protected $elements;
+	protected $names;
 
 
 	public function __construct() {
 		$this->connections = new \SplObjectStorage;
 		$this->elements = array();
-	}
-
-	private function _print_elements() {
-		if (!empty($this->elements)) {
-			echo "elements:\n";
-			foreach ($this->elements as $id => $element) {
-				echo " - " . $id . ": " . $element['name'] . "\n";
-			}
-			echo "\n";
-		}
+		$this->names = array();
 	}
 
 	public function onPublish(Conn $conn, $topic, $event, array $exclude, array $eligible) {
@@ -76,6 +68,11 @@ class BasicPubSub implements WampServerInterface {
 			}
 			break;
 
+		// change user name
+		case 'change-name':
+			$this->names[$event['session']] = $event['name'];
+			break;
+
 		}
 	}
 
@@ -104,14 +101,15 @@ class BasicPubSub implements WampServerInterface {
 			$clients[] = array($client->resourceId => $client->WAMP->sessionId);
 		}
 
-		// publish all connections to all connections
 		foreach ($this->connections as $connection) {
+			// publish all connections to all connections
 			$connection->event('connect', array('client', $clients));
-		}
 
-		// publish all elements to all connections
-		foreach ($this->connections as $connection) {
+			// publish elements to all connections
 			$connection->event('synchronize', array('elements', $this->elements));
+
+			// publish client names to all connections
+			$connection->event('change-name', array('elements', $this->names));
 		}
 
 		echo "New connection: {$conn->resourceId} (connections: {$connections})\n";
@@ -124,6 +122,11 @@ class BasicPubSub implements WampServerInterface {
 		// remove client from list of connections
 		$this->connections->detach($conn);
 		$connections = sizeof($this->connections);
+
+		// remove client name
+			if (array_key_exists($conn->WAMP->sessionId, $this->names)) {
+				unset($this->names[$conn->WAMP->sessionId]);
+			}
 
 		// clear elements array if no clients connected anymore
 		if (!$connections) {
@@ -143,6 +146,26 @@ class BasicPubSub implements WampServerInterface {
 		echo "An error has occurred: {$e->getMessage()}\n";
 
 		$conn->close();
+	}
+
+	private function _print_elements() {
+		if (!empty($this->elements)) {
+			echo "elements:\n";
+			foreach ($this->elements as $id => $element) {
+				echo " - " . $id . ": " . $element['name'] . "\n";
+			}
+			echo "\n";
+		}
+	}
+
+	private function _print_names() {
+		if (!empty($this->names)) {
+			echo "names:\n";
+			foreach ($this->names as $session => $name) {
+				echo " - " . $session . ": " . $name . "\n";
+			}
+			echo "\n";
+		}
 	}
 
 }
