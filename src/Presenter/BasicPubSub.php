@@ -10,11 +10,13 @@ use Ratchet\Wamp\WampServerInterface;
 */
 class BasicPubSub implements WampServerInterface {
 	protected $connections;
+	protected $client_data;
 	protected $elements;
 
 
 	public function __construct() {
 		$this->connections = new \SplObjectStorage;
+		$this->client_data = array();
 		$this->elements = array();
 	}
 
@@ -76,6 +78,22 @@ class BasicPubSub implements WampServerInterface {
 			}
 			break;
 
+		// change client name
+		case 'change-name':
+			if (!isset($this->client_data[$event['session']])) {
+				$this->client_data[$event['session']] = array();
+			}
+			$this->client_data[$event['session']]['name'] = $event['name'];
+			break;
+
+		// change client color
+		case 'change-color':
+			if (!isset($this->client_data[$event['session']])) {
+				$this->client_data[$event['session']] = array();
+			}
+			$this->client_data[$event['session']]['color'] = $event['color'];
+			break;
+
 		}
 	}
 
@@ -101,7 +119,15 @@ class BasicPubSub implements WampServerInterface {
 		// get all connected clients
 		$clients = array();
 		foreach ($this->connections as $client) {
-			$clients[] = array($client->resourceId => $client->WAMP->sessionId);
+			$session = $client->WAMP->sessionId;
+			$name = (isset($this->client_data[$session]['name'])) ? $this->client_data[$session]['name'] : '';
+			$color = (isset($this->client_data[$session]['color'])) ? $this->client_data[$session]['color'] : '';
+			$data = array(
+				'session' => $session,
+				'name' => $name,
+				'color' => $color
+			);
+			$clients[] = array($client->resourceId => $data);
 		}
 
 		// publish all connections to all connections
