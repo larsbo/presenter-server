@@ -130,13 +130,11 @@ class BasicPubSub implements WampServerInterface {
 			$clients[] = array($client->resourceId => $data);
 		}
 
-		// publish all connections to all connections
 		foreach ($this->connections as $connection) {
+			// publish all connections to all connections
 			$connection->event('connect', array('client', $clients));
-		}
 
-		// publish all elements to all connections
-		foreach ($this->connections as $connection) {
+			// publish elements to all connections
 			$connection->event('synchronize', array('elements', $this->elements));
 		}
 
@@ -150,6 +148,11 @@ class BasicPubSub implements WampServerInterface {
 		// remove client from list of connections
 		$this->connections->detach($conn);
 		$connections = sizeof($this->connections);
+
+		// remove client name
+			if (array_key_exists($conn->WAMP->sessionId, $this->names)) {
+				unset($this->names[$conn->WAMP->sessionId]);
+			}
 
 		// clear elements array if no clients connected anymore
 		if (!$connections) {
@@ -169,6 +172,26 @@ class BasicPubSub implements WampServerInterface {
 		echo "An error has occurred: {$e->getMessage()}\n";
 
 		$conn->close();
+	}
+
+	private function _print_elements() {
+		if (!empty($this->elements)) {
+			echo "elements:\n";
+			foreach ($this->elements as $id => $element) {
+				echo " - " . $id . ": " . $element['name'] . "\n";
+			}
+			echo "\n";
+		}
+	}
+
+	private function _print_names() {
+		if (!empty($this->names)) {
+			echo "names:\n";
+			foreach ($this->names as $session => $name) {
+				echo " - " . $session . ": " . $name . "\n";
+			}
+			echo "\n";
+		}
 	}
 
 }
