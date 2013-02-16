@@ -18,17 +18,91 @@ class BasicPubSub implements WampServerInterface {
 		$this->connections = new \SplObjectStorage;
 		$this->client_data = array();
 		$this->elements = array();
+		
+		echo "Server started. Waiting for clients...\n";
 	}
 
 	private function _print_elements() {
 		if (!empty($this->elements)) {
+			$i = 0;
 			echo "elements:\n";
 			foreach ($this->elements as $id => $element) {
-				echo " - " . $id . ": " . $element['name'] . "\n";
+				$i++;
+				echo "[" . $i . "]\n";
+				echo "\tid: " . $id . ":\n";
+				echo "\tname: " . $element['name'] . "\n";
+				echo "\ttype: " . $element['type'] . "\n";
+				echo "\tleft: " . $element['left'] . "\n";
+				echo "\ttop: " . $element['top'] . "\n";
+				echo "\tz-index: " . $element['index'] . "\n";
+				echo "\trotation: " . $element['rotation'] . "\n";
+				echo "\tscale: " . $element['scale'] . "\n";
 			}
 			echo "\n";
 		}
 	}
+
+
+	/*****  OPEN CLIENT CONNECTION  *****/
+	public function onOpen(Conn $conn) {
+		// add new client to list of connections
+		$this->connections->attach($conn);
+		$connections = sizeof($this->connections);
+
+		// get all connected clients
+		$clients = array();
+		foreach ($this->connections as $client) {
+			$session = $client->WAMP->sessionId;
+			$name = (isset($this->client_data[$session]['name'])) ? $this->client_data[$session]['name'] : '';
+			$color = (isset($this->client_data[$session]['color'])) ? $this->client_data[$session]['color'] : '';
+
+			$clients[] = array(
+				$client->resourceId => array(
+					'session' => $session,
+					'name' => $name,
+					'color' => $color
+				)
+			);
+		}
+
+		foreach ($this->connections as $connection) {
+			// publish connected clients to all connections
+			$connection->event('clients', array('client', $clients));
+
+			// publish elements to all connections
+			$connection->event('elements', array('elements', $this->elements));
+		}
+
+		echo "client {$conn->resourceId} connected! [clients total: {$connections}]\n";
+	}
+
+
+	/*****  CLOSE CLIENT CONNECTION  *****/
+	public function onClose(Conn $conn) {
+		$client = array($conn->resourceId => $conn->WAMP->sessionId);
+
+		// remove client from list of connections
+		$this->connections->detach($conn);
+		$connections = sizeof($this->connections);
+
+		// remove client data
+			if (array_key_exists($conn->resourceId, $this->client_data)) {
+				unset($this->client_data[$conn->resourceId]);
+			}
+
+		// clear elements array if no clients connected anymore
+		if (!$connections) {
+			$this->elements = array();
+		}
+
+		// publish disconnection of client to still connected clients
+		foreach ($this->connections as $connection) {
+			$connection->event('disconnect', array('client', $client));
+		}
+
+		echo "client {$conn->resourceId} disconnected! [clients total: {$connections}]\n";
+	}
+
 
 	public function onPublish(Conn $conn, $topic, $event, array $exclude, array $eligible) {
 		$topic->broadcast($event);
@@ -37,16 +111,16 @@ class BasicPubSub implements WampServerInterface {
 
 		// add new element
 		case 'add':
-			// create hash value of element name for unique id
-			$key = md5($event['name']);
-
-			if (!array_key_exists($key, $this->elements)) {
-				$this->elements[$key] = array(
+			if (!array_key_exists($event['id'], $this->elements)) {
+				$this->elements[$event['id']] = array(
 					'session' => $event['session'],
 					'name' => $event['name'],
 					'type' => $event['type'],
 					'left' => $event['left'],
-					'top' => $event['top']
+					'top' => $event['top'],
+					'index' => $event['index'],
+					'rotation' => $event['rotation'],
+					'scale' => $event['scale']
 				);
 				$this->_print_elements();
 			}
@@ -54,27 +128,44 @@ class BasicPubSub implements WampServerInterface {
 
 		// remove element
 		case 'remove':
-			// create hash value of element name for unique id
-			$key = md5($event['name']);
+			$id = $event['id'];
 
-			if (isset($this->elements[$key])) {
-				unset($this->elements[$key]);
+			if (!empty($this->elements) && isset($this->elements[$id])) {
+				unset($this->elements[$id]);
 			} else {
-				echo "can't remove element {$key}: not found!\n";
+				echo "can't remove element {$id}: not found!\n";
 			}
 			$this->_print_elements();
 			break;
 
-		// reposition element
-		case 'drag-end':
-			// create hash value of element name for unique id
-			$key = md5($event['name']);
+		// on drag start
+		case 'drag-start':
+			$id = $event['id'];
 
-			if (isset($this->elements[$key])) {
-				$this->elements[$key]['left'] = $event['left'];
-				$this->elements[$key]['top'] = $event['top'];
-			} else {
-				echo "can't reposition element {$key}: not found!\n";
+			if (!empty($this->elements) && isset($this->elements[$id])) {
+				$this->elements[$id]['index'] = $event['index'];
+			}
+			break;
+
+		// after dragging
+		case 'drag-end':
+			$id = $event['id'];
+
+			if (!empty($this->elements) && isset($this->elements[$id])) {
+				$this->elements[$id]['left'] = $event['left'];
+				$this->elements[$id]['top'] = $event['top'];
+			}
+			break;
+
+		// after rotation & scaling
+		case 'rotate-scale-end':
+			$id = $event['id'];
+
+			if (!empty($this->elements) && isset($this->elements[$id])) {
+				$this->elements[$id]['rotation'] = $event['rotation'];
+				$this->elements[$id]['scale'] = $event['scale'];
+
+				$this->_print_elements();
 			}
 			break;
 
@@ -93,78 +184,7 @@ class BasicPubSub implements WampServerInterface {
 			}
 			$this->client_data[$event['session']]['color'] = $event['color'];
 			break;
-
 		}
-	}
-
-
-	public function onCall(Conn $conn, $id, $fn, array $params) {
-		$conn->callError($id, $topic, 'RPC not supported!');
-	}
-
-
-	public function onSubscribe(Conn $conn, $topic) {
-	}
-
-
-	public function onUnSubscribe(Conn $conn, $topic) {
-	}
-
-
-	public function onOpen(Conn $conn) {
-		// add new client to list of connections
-		$this->connections->attach($conn);
-		$connections = sizeof($this->connections);
-
-		// get all connected clients
-		$clients = array();
-		foreach ($this->connections as $client) {
-			$session = $client->WAMP->sessionId;
-			$name = (isset($this->client_data[$session]['name'])) ? $this->client_data[$session]['name'] : '';
-			$color = (isset($this->client_data[$session]['color'])) ? $this->client_data[$session]['color'] : '';
-			$data = array(
-				'session' => $session,
-				'name' => $name,
-				'color' => $color
-			);
-			$clients[] = array($client->resourceId => $data);
-		}
-
-		foreach ($this->connections as $connection) {
-			// publish all connections to all connections
-			$connection->event('connect', array('client', $clients));
-
-			// publish elements to all connections
-			$connection->event('synchronize', array('elements', $this->elements));
-		}
-
-		echo "New connection: {$conn->resourceId} (connections: {$connections})\n";
-	}
-
-
-	public function onClose(Conn $conn) {
-		$client = array($conn->resourceId => $conn->WAMP->sessionId);
-
-		// remove client from list of connections
-		$this->connections->detach($conn);
-		$connections = sizeof($this->connections);
-
-		// remove client name
-			if (array_key_exists($conn->WAMP->sessionId, $this->names)) {
-				unset($this->names[$conn->WAMP->sessionId]);
-			}
-
-		// clear elements array if no clients connected anymore
-		if (!$connections) {
-			$this->elements = array();
-		}
-
-		// publish disconnection of client to still connected clients
-		foreach ($this->connections as $connection) {
-			$connection->event('disconnect', array('client', $client));
-		}
-
-		echo "Connection closed: {$conn->resourceId} (connections: {$connections})\n";
 	}
 
 
@@ -174,25 +194,14 @@ class BasicPubSub implements WampServerInterface {
 		$conn->close();
 	}
 
-	private function _print_elements() {
-		if (!empty($this->elements)) {
-			echo "elements:\n";
-			foreach ($this->elements as $id => $element) {
-				echo " - " . $id . ": " . $element['name'] . "\n";
-			}
-			echo "\n";
-		}
+	public function onCall(Conn $conn, $id, $fn, array $params) {
+		$conn->callError($id, $topic, 'RPC not supported!');
 	}
 
-	private function _print_names() {
-		if (!empty($this->names)) {
-			echo "names:\n";
-			foreach ($this->names as $session => $name) {
-				echo " - " . $session . ": " . $name . "\n";
-			}
-			echo "\n";
-		}
+	public function onSubscribe(Conn $conn, $topic) {
 	}
 
+	public function onUnSubscribe(Conn $conn, $topic) {
+	}
 }
 ?>
