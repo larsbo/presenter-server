@@ -158,7 +158,7 @@ class BasicPubSub implements WampServerInterface {
 			break;
 
 		// after rotation & scaling
-		case 'rotate-scale-end':
+		case 'rotate-scale':
 			$id = $event['id'];
 
 			if (!empty($this->elements) && isset($this->elements[$id])) {
