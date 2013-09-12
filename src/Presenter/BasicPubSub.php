@@ -140,11 +140,6 @@ class BasicPubSub implements WampServerInterface {
 
 		// on drag start
 		case 'drag-start':
-			$id = $event['id'];
-
-			if (!empty($this->elements) && isset($this->elements[$id])) {
-				$this->elements[$id]['index'] = $event['index'];
-			}
 			break;
 
 		// after dragging
